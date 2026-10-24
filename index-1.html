@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>벡터 기반 물체 이동 추적 시뮬레이터</title>
+<style>
+  :root { --bg:#f4f7fb; --card:#fff; --ink:#172033; --muted:#667085; --line:#dce3ee; --blue:#2878d0; --orange:#e58b26; --green:#168879; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif; color:var(--ink); background:var(--bg); line-height:1.55; }
+  header { padding:28px 20px 24px; background:linear-gradient(135deg,#123b68,#236bb0); color:white; }
+  header .wrap, main { max-width:1100px; margin:0 auto; }
+  .eyebrow { font-size:.78rem; letter-spacing:.12em; opacity:.82; font-weight:700; }
+  h1 { margin:8px 0; line-height:1.25; font-size:clamp(1.5rem,4vw,2.25rem); }
+  header p { margin:8px 0 0; max-width:760px; color:#e3efff; }
+  main { padding:22px 16px 42px; }
+  .layout { display:grid; grid-template-columns: minmax(0,1.3fr) minmax(280px,.7fr); gap:18px; align-items:start; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; box-shadow:0 5px 18px rgba(30,55,90,.04); }
+  h2 { margin:0 0 12px; font-size:1.1rem; }
+  .sub { margin:-5px 0 14px; color:var(--muted); font-size:.9rem; }
+  .controls { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  label { display:block; font-size:.9rem; font-weight:650; margin-bottom:5px; }
+  select, input[type="range"], button { width:100%; }
+  select { border:1px solid #cbd5e1; background:white; border-radius:9px; padding:10px; color:var(--ink); font:inherit; }
+  input[type="range"] { accent-color:var(--blue); }
+  .value { color:var(--blue); font-weight:750; }
+  .actions { display:flex; gap:9px; margin-top:15px; flex-wrap:wrap; }
+  button { border:0; border-radius:10px; padding:11px 14px; cursor:pointer; font:inherit; font-weight:700; }
+  .primary { background:var(--blue); color:white; }
+  .secondary { background:#eaf1fa; color:#214d7e; }
+  .plot-wrap { background:#fbfdff; border:1px solid var(--line); border-radius:12px; padding:8px; }
+  svg { display:block; width:100%; height:auto; }
+  .legend { display:flex; gap:15px; flex-wrap:wrap; font-size:.86rem; margin-top:10px; color:#344054; }
+  .key { display:inline-block; width:19px; height:4px; vertical-align:middle; margin-right:6px; border-radius:3px; }
+  .metrics { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .metric { background:#f7f9fc; border:1px solid var(--line); border-radius:11px; padding:12px; }
+  .metric .label { color:var(--muted); font-size:.8rem; }
+  .metric .number { font-size:1.25rem; font-weight:800; margin-top:3px; }
+  .formula { padding:12px; background:#f1f6fc; border-radius:10px; font-family:ui-monospace,SFMono-Regular,monospace; overflow-wrap:anywhere; font-size:.91rem; }
+  .note { font-size:.88rem; color:var(--muted); margin:12px 0 0; }
+  .table-wrap { overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; font-size:.88rem; white-space:nowrap; }
+  th,td { padding:9px 10px; border-bottom:1px solid var(--line); text-align:right; }
+  th { background:#f6f8fb; color:#475467; font-weight:700; }
+  th:first-child,td:first-child { text-align:center; }
+  .pill { display:inline-block; padding:3px 8px; border-radius:999px; font-size:.76rem; background:#e8f5f2; color:#126b60; font-weight:700; }
+  .section-gap { margin-top:18px; }
+  footer { color:var(--muted); text-align:center; padding:0 16px 24px; font-size:.82rem; }
+  @media (max-width:780px) { .layout { grid-template-columns:1fr; } .controls { grid-template-columns:1fr; } header { padding-top:22px; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="eyebrow">GEOMETRY × INFORMATION TECHNOLOGY</div>
+    <h1>벡터 기반 물체 이동 추적 시뮬레이터</h1>
+    <p>좌표 변화 벡터로 물체의 이동을 추정하고, 위치 측정 오차가 이동 경로와 방향에 미치는 영향을 비교합니다.</p>
+  </div>
+</header>
+<main>
+  <div class="layout">
+    <section class="card">
+      <h2>1. 이동 경로 시각화</h2>
+      <p class="sub">파란 선은 실제 경로, 주황색 점선은 오차가 포함된 측정 경로입니다.</p>
+      <div class="plot-wrap">
+        <svg id="plot" viewBox="0 0 640 430" role="img" aria-label="실제 경로와 측정 경로의 좌표 그래프"></svg>
+      </div>
+      <div class="legend">
+        <span><i class="key" style="background:var(--blue)"></i>실제 경로</span>
+        <span><i class="key" style="background:var(--orange)"></i>측정 경로</span>
+        <span><i class="key" style="background:var(--green)"></i>위치 오차</span>
+      </div>
+      <p class="note">※ 좌표는 설명을 위해 만든 가상 데이터이며, 실제 영상에서 물체를 자동 인식하는 기능은 포함하지 않습니다.</p>
+    </section>
+    <aside class="card">
+      <h2>2. 실험 조건 설정</h2>
+      <div class="controls">
+        <div>
+          <label for="noise">위치 오차 크기 <span class="value" id="noiseVal">4</span></label>
+          <input id="noise" type="range" min="0" max="14" step="1" value="4">
+        </div>
+        <div>
+          <label for="distance">이동 거리 배율 <span class="value" id="distanceVal">1.0</span></label>
+          <input id="distance" type="range" min="0.5" max="2" step="0.1" value="1">
+        </div>
+        <div>
+          <label for="points">측정 지점 수</label>
+          <select id="points">
+            <option value="4">4개 지점</option>
+            <option value="5" selected>5개 지점</option>
+            <option value="6">6개 지점</option>
+            <option value="7">7개 지점</option>
+          </select>
+        </div>
+        <div>
+          <label for="pattern">이동 경로</label>
+          <select id="pattern">
+            <option value="diagonal" selected>대각선 이동</option>
+            <option value="turn">방향 전환</option>
+            <option value="zigzag">지그재그 이동</option>
+          </select>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="primary" id="run">조건 적용하기</button>
+        <button class="secondary" id="reset">초기화</button>
+      </div>
+      <div class="section-gap">
+        <h2>3. 계산 결과</h2>
+        <div class="metrics">
+          <div class="metric"><div class="label">실제 마지막 구간 거리</div><div class="number" id="actualDist">—</div></div>
+          <div class="metric"><div class="label">측정 마지막 구간 거리</div><div class="number" id="measuredDist">—</div></div>
+          <div class="metric"><div class="label">마지막 구간 방향 차이</div><div class="number" id="angleDiff">—</div></div>
+          <div class="metric"><div class="label">평균 위치 오차</div><div class="number" id="avgError">—</div></div>
+        </div>
+      </div>
+      <div class="section-gap">
+        <h2>핵심 계산식</h2>
+        <div class="formula">변화 벡터 = (x₂ − x₁, y₂ − y₁)</div>
+        <div class="formula" style="margin-top:8px">벡터의 크기 = √((x₂ − x₁)² + (y₂ − y₁)²)</div>
+        <p class="note" id="interpretation">오차 크기를 조절하고 결과가 어떻게 달라지는지 관찰해 보세요.</p>
+      </div>
+    </aside>
+  </div>
+  <section class="card section-gap">
+    <h2>4. 좌표 및 벡터 데이터</h2>
+    <p class="sub">각 지점의 실제 좌표와 측정 좌표, 두 지점 사이의 변화 벡터를 확인할 수 있습니다.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>지점</th><th>실제 x</th><th>실제 y</th><th>측정 x</th><th>측정 y</th><th>측정 변화 벡터</th></tr></thead>
+        <tbody id="dataRows"></tbody>
+      </table>
+    </div>
+    <p class="note">해석할 때는 오차 크기뿐 아니라 오차가 발생한 방향, 지점 사이의 이동 거리도 함께 고려해야 합니다. 이 시뮬레이터는 고정된 오차 패턴을 사용하므로 실제 측정의 모든 특성을 재현하지는 않습니다.</p>
+  </section>
+  <section class="card section-gap">
+    <h2>5. 탐구에 활용할 질문</h2>
+    <ol>
+      <li>위치 오차가 커질수록 실제 경로와 측정 경로의 차이는 어떻게 달라지는가?</li>
+      <li>같은 오차 조건에서 이동 거리를 늘리면 마지막 구간의 방향 추정은 어떻게 변하는가?</li>
+      <li>방향 전환이나 지그재그 이동에서는 대각선 이동과 다른 결과가 나타나는가?</li>
+      <li>이 시뮬레이션의 한계는 무엇이며, 실제 영상 추적에 적용하려면 어떤 데이터나 기능이 추가되어야 하는가?</li>
+    </ol>
+  </section>
+</main>
+<footer>기하 탐구용 교육 시뮬레이터 · 모든 계산은 브라우저 안에서 수행됩니다.</footer>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const ns = 'http://www.w3.org/2000/svg';
+  const base = {
+    diagonal: [[8,8],[18,16],[29,23],[41,32],[52,38],[64,45],[75,53]],
+    turn: [[8,10],[19,17],[30,24],[41,31],[52,31],[63,31],[75,31]],
+    zigzag: [[8,12],[19,29],[30,13],[41,31],[52,15],[63,33],[75,17]]
+  };
+  // Deterministic offsets make comparisons reproducible.
+  const offsets = [[0,0],[1.0,-0.5],[-0.7,1.0],[1.2,0.7],[-1.1,-0.8],[0.5,1.2],[-0.8,-0.4]];
+  function dist(a,b){ return Math.hypot(b[0]-a[0], b[1]-a[1]); }
+  function angle(a,b){ return Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI; }
+  function angleDifference(a,b){ let d=Math.abs(a-b)%360; return Math.min(d,360-d); }
+  function el(tag,attrs={},text=''){ const e=document.createElementNS(ns,tag); Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v)); if(text) e.textContent=text; return e; }
+  function draw(){
+    const noise=+$('noise').value, scale=+$('distance').value, n=+$('points').value, pattern=$('pattern').value;
+    $('noiseVal').textContent=noise;
+    $('distanceVal').textContent=scale.toFixed(1);
+    const raw=base[pattern].slice(0,n).map(p=>[p[0], 50+(p[1]-50)*scale]);
+    const actual=raw.map(p=>[p[0],p[1]]);
+    const measured=actual.map((p,i)=>[p[0]+offsets[i][0]*noise,p[1]+offsets[i][1]*noise]);
+    // Map data coordinates to SVG coordinates.
+    const X=x=>55+(x-0)*6.9, Y=y=>370-(y-0)*6.2;
+    const svg=$('plot'); svg.innerHTML='';
+    // grid and axes
+    for(let x=0;x<=90;x+=10){
+      svg.appendChild(el('line',{x1:X(x),y1:35,x2:X(x),y2:370,stroke:'#dfe6ef','stroke-width':1}));
+      svg.appendChild(el('text',{x:X(x),y:393,'text-anchor':'middle','font-size':12,fill:'#667085'},String(x)));
+    }
+    for(let y=0;y<=50;y+=10){
+      svg.appendChild(el('line',{x1:55,y1:Y(y),x2:590,y2:Y(y),stroke:'#dfe6ef','stroke-width':1}));
+      svg.appendChild(el('text',{x:39,y:Y(y)+4,'text-anchor':'end','font-size':12,fill:'#667085'},String(y)));
+    }
+    svg.appendChild(el('line',{x1:55,y1:35,x2:55,y2:370,stroke:'#667085','stroke-width':1.5}));
+    svg.appendChild(el('line',{x1:55,y1:370,x2:590,y2:370,stroke:'#667085','stroke-width':1.5}));
+    svg.appendChild(el('text',{x:596,y:393,'font-size':13,fill:'#344054'},'x'));
+    svg.appendChild(el('text',{x:39,y:25,'font-size':13,fill:'#344054'},'y'));
+    const path=d=>d.map((p,i)=>(i?'L':'M')+X(p[0])+','+Y(p[1])).join(' ');
+    svg.appendChild(el('path',{d:path(actual),fill:'none',stroke:'#2878d0','stroke-width':3,'stroke-linecap':'round','stroke-linejoin':'round'}));
+    svg.appendChild(el('path',{d:path(measured),fill:'none',stroke:'#e58b26','stroke-width':2.5,'stroke-dasharray':'7 5','stroke-linecap':'round','stroke-linejoin':'round'}));
+    actual.forEach((p,i)=>{
+      svg.appendChild(el('line',{x1:X(p[0]),y1:Y(p[1]),x2:X(measured[i][0]),y2:Y(measured[i][1]),stroke:'#168879','stroke-width':1.5,opacity:.8}));
+      svg.appendChild(el('circle',{cx:X(p[0]),cy:Y(p[1]),r:4.3,fill:'#2878d0',stroke:'#fff','stroke-width':1.5}));
+      svg.appendChild(el('circle',{cx:X(measured[i][0]),cy:Y(measured[i][1]),r:4,fill:'#e58b26',stroke:'#fff','stroke-width':1.2}));
+    });
+    const a0=actual[n-2],a1=actual[n-1],m0=measured[n-2],m1=measured[n-1];
+    const actualD=dist(a0,a1), measuredD=dist(m0,m1), aDiff=angleDifference(angle(a0,a1),angle(m0,m1));
+    const avg=actual.reduce((s,p,i)=>s+dist(p,measured[i]),0)/n;
+    $('actualDist').textContent=actualD.toFixed(2);
+    $('measuredDist').textContent=measuredD.toFixed(2);
+    $('angleDiff').textContent=aDiff.toFixed(1)+'°';
+    $('avgError').textContent=avg.toFixed(2);
+    $('interpretation').textContent = noise===0
+      ? '현재 조건에서는 측정 오차가 0이므로 실제 좌표와 측정 좌표가 일치합니다.'
+      : `현재 조건에서 평균 위치 오차는 ${avg.toFixed(2)}이고, 마지막 구간의 방향 차이는 ${aDiff.toFixed(1)}°입니다. 오차와 이동 거리를 바꾸어 비교해 보세요.`;
+    const rows=$('dataRows'); rows.innerHTML='';
+    measured.forEach((p,i)=>{
+      const tr=document.createElement('tr');
+      const prev=i===0?null:measured[i-1];
+      const v=prev?`(${(p[0]-prev[0]).toFixed(1)}, ${(p[1]-prev[1]).toFixed(1)})`:'—';
+      const vals=[i+1,actual[i][0].toFixed(1),actual[i][1].toFixed(1),p[0].toFixed(1),p[1].toFixed(1),v];
+      vals.forEach((v,j)=>{const td=document.createElement('td');td.textContent=v;if(j===0)td.style.textAlign='center';tr.appendChild(td);});
+      rows.appendChild(tr);
+    });
+  }
+  $('run').addEventListener('click',draw);
+  $('reset').addEventListener('click',()=>{$('noise').value=4;$('distance').value=1;$('points').value=5;$('pattern').value='diagonal';draw();});
+  ['noise','distance','points','pattern'].forEach(id=>$(id).addEventListener('input',draw));
+  draw();
+})();
+</script>
+</body>
+</html>
